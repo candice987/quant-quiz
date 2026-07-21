@@ -67,6 +67,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 .chip .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);margin-left:6px;vertical-align:middle}
 .chip.sel .dot{background:#ffd0d0}
 
+.sgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+.scard{position:relative;background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:14px;cursor:pointer;text-align:left;font:inherit;transition:.13s;display:flex;flex-direction:column;gap:5px;min-height:96px;}
+.scard:hover{border-color:var(--brand);transform:translateY(-1px)}
+.scard.sel{border-color:var(--brand);background:var(--brand-soft)}
+.scard .sname{font-weight:800;font-size:14.5px;line-height:1.25}
+.scard .smeta{font-size:11.5px;color:var(--muted)}
+.scard .sbar{height:5px;background:#eceef6;border-radius:999px;overflow:hidden;margin-top:auto}
+.scard .sbar > i{display:block;height:100%;background:var(--brand);width:0}
+.scard .sstar{position:absolute;top:8px;right:10px;font-size:11px;color:var(--warn)}
+.scard .swrong{position:absolute;bottom:10px;right:11px;font-size:10.5px;font-weight:800;color:var(--bad);background:var(--bad-soft);padding:2px 7px;border-radius:6px}
+.crosscard{grid-column:span 2;background:linear-gradient(135deg,#3b5bdb,#5b6ef0);color:#fff;border:none;}
+.crosscard:hover{transform:translateY(-1px)}
+.crosscard .sname{font-size:16px}
+.crosscard .smeta{color:rgba(255,255,255,.85)}
+
 .sect-title{font-weight:850;font-size:15px;margin:18px 0 10px;display:flex;align-items:center;gap:8px}
 .sect-title .count{font-size:12px;color:var(--muted);font-weight:700;background:var(--card);border:1px solid var(--line);padding:2px 9px;border-radius:999px}
 
@@ -163,23 +178,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       </div>
       <div class="progress"><i id="homeBar"></i></div>
       <div class="actions">
-        <button class="btn primary" id="btnStart">▶ 开始练习</button>
+        <button class="btn primary" id="btnCross">🔀 随机跨科练习</button>
         <button class="btn" id="btnWrong">✎ 只练错题</button>
       </div>
       <div class="actions" style="margin-top:9px">
         <button class="btn ghost" id="btnReviewWrong" style="background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.3)">📓 错题本</button>
-        <label class="toggle" id="shuffleToggle"><span class="sw"></span><span>随机顺序</span></label>
+        <label class="toggle" id="shuffleToggle"><span class="sw"></span><span>本组内随机</span></label>
       </div>
       <div class="urlnote">手机打开 <code>candice987.github.io/quant-quiz</code></div>
     </div>
 
-    <div class="sect-title">📚 选择科目</div>
-    <div class="chips" id="subjChips"></div>
-
-    <div class="sect-title">题目列表 <span class="count" id="browCount"></span>
+    <div class="sect-title">📚 选择科目 <span class="count">点击任意科目即开始</span>
       <span style="flex:1"></span>
-      <button class="btn ghost danger" id="btnReset" style="padding:7px 12px;font-size:12.5px;min-height:auto">重置进度</button>
+      <button class="btn ghost danger" id="btnReset" style="padding:7px 12px;font-size:12.5px;min-height:auto">重置</button>
     </div>
+    <div class="card" style="padding:14px">
+      <div class="sgrid" id="subjGrid"></div>
+    </div>
+    <div class="sect-title" id="browTitle">当前科目题目 <span class="count" id="browCount"></span></div>
     <div class="card" style="padding:12px">
       <div class="list" id="browList"></div>
     </div>
@@ -321,8 +337,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   function applyEdits(){ ALL.forEach(function(q){ var e=edits[q.id]; if(e){ Object.assign(q,e); q.__edited=true; } }); }
   applyEdits();
 
-  function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  function saveEdits(){ localStorage.setItem("cfa_allquiz_edits_v1", JSON.stringify(edits)); }
+  function saveEdits(){ localStorage.setItem(EDITS_KEY, JSON.stringify(edits)); }
   function esc(s){ return (s||"").replace(/[&<>]/g,function(c){return c==="&"?"&amp;":c==="<"?"&lt;":"&gt;";}); }
   function shuffle(a){ for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
   function chunk(a,n){ var r=[]; for(var i=0;i<a.length;i+=n) r.push(a.slice(i,i+n)); return r; }
@@ -348,36 +363,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 
   /* HOME */
   function renderHome(){
-    var qs=curQ(); var st=statsFor(qs);
     var allSt=statsFor(ALL);
     document.getElementById("topPill").textContent = allSt.done+"/"+allSt.total;
-    document.getElementById("sTotal").textContent=st.total;
-    document.getElementById("sDone").textContent=st.done;
-    document.getElementById("sRight").textContent=st.right;
-    document.getElementById("sWrong").textContent=st.wrongIds.length;
-    document.getElementById("sAcc").textContent= st.done? Math.round(st.right/st.done*100)+"%":"—";
-    document.getElementById("homeBar").style.width=(st.total?st.done/st.total*100:0)+"%";
+    document.getElementById("sTotal").textContent=allSt.total;
+    document.getElementById("sDone").textContent=allSt.done;
+    document.getElementById("sRight").textContent=allSt.right;
+    document.getElementById("sWrong").textContent=allSt.wrongIds.length;
+    document.getElementById("sAcc").textContent= allSt.done? Math.round(allSt.right/allSt.done*100)+"%":"—";
+    document.getElementById("homeBar").style.width=(allSt.total?allSt.done/allSt.total*100:0)+"%";
     document.getElementById("shuffleToggle").classList.toggle("on",!!state.shuffle);
-    document.getElementById("btnWrong").disabled = st.wrongIds.length===0;
-    // subject chips
-    var cc=document.getElementById("subjChips"); cc.innerHTML="";
-    var allChip=document.createElement("button"); allChip.className="chip"+(state.subject==='all'?" sel":"");
-    allChip.innerHTML="全部科目"+(state.subject==='all'?"":('<span class="dot"></span>'));
-    allChip.onclick=function(){ state.subject='all'; save(); renderHome(); };
-    cc.appendChild(allChip);
+    document.getElementById("btnWrong").disabled = allSt.wrongIds.length===0;
+    // subject grid (tap any card to start that subject)
+    var grid=document.getElementById("subjGrid"); grid.innerHTML="";
+    var cross=document.createElement("button"); cross.className="scard crosscard";
+    cross.innerHTML='<div class="sname">🔀 随机跨科练习</div><div class="smeta">全部 '+allSt.total+' 题 · 已答 '+allSt.done+' · 各科随机混编，不固定顺序</div>';
+    cross.onclick=startCross; grid.appendChild(cross);
     SUBJ_ORDER.forEach(function(key){
       var sq=subjQuestions(key); var sst=statsFor(sq);
-      var hasWrong = sst.wrongIds.length>0;
-      var c=document.createElement("button"); c.className="chip"+(state.subject===key?" sel":"");
-      var star = SUBJ_NAME[key].indexOf("数量")===0 ? " ★" : "";
-      c.innerHTML=SUBJ_NAME[key]+star+(hasWrong && state.subject!==key?'<span class="dot"></span>':'');
-      c.onclick=function(){ state.subject=key; save(); renderHome(); };
-      cc.appendChild(c);
+      var acc=sst.done?Math.round(sst.right/sst.done*100)+"%":"—";
+      var pct=sq.length?sst.done/sq.length*100:0;
+      var star = SUBJ_NAME[key].indexOf("数量")===0?'<span class="sstar">★已校对</span>':'';
+      var wb = sst.wrongIds.length?'<span class="swrong">错 '+sst.wrongIds.length+'</span>':'';
+      var c=document.createElement("button");
+      c.className="scard"+(state.subject===key && state.subject!=='all'?" sel":"");
+      c.innerHTML=star+'<div class="sname">'+esc(SUBJ_NAME[key])+'</div>'+
+        '<div class="smeta">已答 '+sst.done+'/'+sq.length+' · 正确率 '+acc+'</div>'+
+        '<div class="sbar"><i style="width:'+pct+'%"></i></div>'+wb;
+      c.onclick=function(){ startSubject(key); };
+      grid.appendChild(c);
     });
     // browse list (current subject)
-    var list=document.getElementById("browList");
-    document.getElementById("browCount").textContent=st.total+" 题";
-    list.innerHTML="";
+    var qs=curQ();
+    document.getElementById("browCount").textContent=qs.length+" 题";
+    var list=document.getElementById("browList"); list.innerHTML="";
     qs.slice(0,200).forEach(function(q){
       var p=state.per[q.id]||{};
       var badge='';
@@ -391,7 +409,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 
   /* QUIZ */
   var queue=[],groups=[],gi=0,pi=0,sel={};
-  function startQuiz(ids){
+  function startSubject(key){ state.subject=key; save(); renderHome(); startQuiz(); }
+  function startCross(){ state.subject='all'; save(); renderHome(); startQuiz(null, true); }
+  function startQuiz(ids, forceShuffle){
     var qs=curQ();
     if(!ids||!ids.length){
       var todo=qs.filter(function(q){return !(state.per[q.id]&&state.per[q.id].answered);}).map(function(q){return q.id;});
@@ -401,7 +421,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       ids = complete.concat(incomplete);
       if(!ids.length) ids=qs.map(function(q){return q.id;});
     }
-    queue = state.shuffle ? shuffle(ids.slice()) : ids.slice();
+    var shuf = forceShuffle || state.shuffle;
+    queue = shuf ? shuffle(ids.slice()) : ids.slice();
     groups = chunk(queue,GROUP); gi=0;
     show("view-quiz"); loadGroup();
   }
@@ -513,8 +534,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   }
 
   /* events */
-  document.getElementById("btnStart").onclick=function(){ startQuiz(); };
-  document.getElementById("btnWrong").onclick=function(){ var ids=statsFor(curQ()).wrongIds; if(ids.length) startQuiz(ids); };
+  document.getElementById("btnCross").onclick=startCross;
+  document.getElementById("btnWrong").onclick=function(){ var ids=statsFor(ALL).wrongIds; if(ids.length) startQuiz(ids); };
   document.getElementById("btnReviewWrong").onclick=function(){ wrongFilter='all'; renderWrong(); show("view-wrong"); };
   document.getElementById("wHome").onclick=function(){ renderHome(); show("view-home"); };
   document.getElementById("wPractice").onclick=function(){ var ids=statsFor(curQ()).wrongIds; if(ids.length) startQuiz(ids); };
