@@ -22,6 +22,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 .topbar .logo{font-weight:800;font-size:15px;}
 .topbar .logo b{color:var(--brand)}
 .topbar .spacer{flex:1}
+.prof{display:flex;align-items:center;gap:7px;background:var(--card);border:1px solid var(--line);padding:4px 10px 4px 5px;border-radius:999px;cursor:pointer;font-weight:800;font-size:13px;}
+.prof:hover{border-color:var(--brand)}
+.avatar{width:26px;height:26px;border-radius:50%;color:#fff;font-weight:850;display:flex;align-items:center;justify-content:center;font-size:13px;flex:0 0 auto;}
+.avatar.lg{width:40px;height:40px;font-size:18px}
+.profrow{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);cursor:pointer;margin-bottom:8px;}
+.profrow:hover{border-color:var(--brand)}
+.profrow.active{border-color:var(--ok);background:var(--ok-soft)}
+.profrow .pn{flex:1;font-weight:800;font-size:15px}
+.profrow .ps{font-size:11.5px;color:var(--muted);margin-top:1px}
+.profrow .del{font-size:11px;color:var(--bad);background:none;border:1px solid #f1c0c0;cursor:pointer;padding:5px 9px;border-radius:7px}
+.profrow .act{font-size:11px;font-weight:800;color:var(--ok)}
 .topbar .pill{font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--line);padding:5px 11px;border-radius:999px;white-space:nowrap;}
 .btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:12px 18px;border-radius:12px;font-weight:700;transition:.15s;display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:var(--tap);}
 .btn:hover{border-color:#cdd2e2;transform:translateY(-1px)}
@@ -135,6 +146,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     <div class="logo">CFA 二级 · <b>全科刷题</b></div>
     <div class="spacer"></div>
     <span class="pill" id="topPill">0/0</span>
+    <button class="prof" id="profBtn" title="切换账号"><span class="avatar" id="profAvatar">C</span><span id="profName">Candice</span> <span style="color:var(--muted);font-size:11px">▾</span></button>
   </div>
 
   <!-- HOME -->
@@ -229,6 +241,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 </div>
 
 <!-- EDIT MODAL -->
+<!-- PROFILE MODAL -->
+<div id="profModal" style="position:fixed;inset:0;background:rgba(20,24,35,.55);display:none;align-items:center;justify-content:center;z-index:60;padding:16px">
+  <div style="background:#fff;border-radius:16px;max-width:440px;width:100%;max-height:88vh;overflow:auto;padding:22px">
+    <h3 style="margin:0 0 4px">选择账号</h3>
+    <p class="small muted">每个人独立记录进度与错题；题目内容修改（编辑）全员共享。</p>
+    <div id="profList" style="margin-top:14px"></div>
+    <button class="btn ghost" id="profAdd" style="width:100%;margin-top:4px">＋ 新建账号</button>
+    <div style="text-align:right;margin-top:14px"><button class="btn ghost" id="profClose">关闭</button></div>
+  </div>
+</div>
+
 <div id="editModal" style="position:fixed;inset:0;background:rgba(20,24,35,.55);display:none;align-items:center;justify-content:center;z-index:60;padding:16px">
   <div style="background:#fff;border-radius:16px;max-width:680px;width:100%;max-height:88vh;overflow:auto;padding:22px">
     <h3 style="margin:0 0 4px">编辑本题</h3>
@@ -263,15 +286,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   "use strict";
   var ALL = window.__QUESTIONS_DATA__ || [];
   var GROUP = 5;
-  var LS_KEY = "cfa_allquiz_v1";
+  var PROFILES_KEY = "cfa_allquiz_profiles";
+  var ACTIVE_KEY = "cfa_allquiz_active";
+  var EDITS_KEY = "cfa_allquiz_edits_v1";
+  var COLORS = ['#e64980','#1c7ed6','#3b5bdb','#0ca678','#f08c00','#9c36b5','#1098ad','#f06595'];
+
+  // ---- profiles ----
+  var profiles = []; try{ profiles=JSON.parse(localStorage.getItem(PROFILES_KEY)||"[]"); }catch(e){}
+  if(!profiles.length){
+    profiles = [{id:'candice',name:'Candice',color:'#e64980'},{id:'justin',name:'Justin',color:'#1c7ed6'}];
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+  }
+  var activeId = localStorage.getItem(ACTIVE_KEY) || profiles[0].id;
+  if(!profiles.some(function(p){return p.id===activeId;})) activeId = profiles[0].id;
+  localStorage.setItem(ACTIVE_KEY, activeId);
+  function saveProfiles(){ localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); }
+  function activeProfile(){ return profiles.find(function(p){return p.id===activeId;}) || profiles[0]; }
+  function stateKey(id){ return "cfa_allquiz_state_"+id; }
+
+  // ---- per-profile state ----
   var state = { per:{}, shuffle:false, subject:'all' };
-  try{ var s=JSON.parse(localStorage.getItem(LS_KEY)||"{}"); if(s&&s.per){state=s;} }catch(e){}
-  if(!state.per) state.per={};
-  if(typeof state.shuffle==="undefined") state.shuffle=false;
-  if(typeof state.subject==="undefined") state.subject='all';
-  // apply local edits
-  var edits = {}; try{ edits=JSON.parse(localStorage.getItem("cfa_allquiz_edits_v1")||"{}"); }catch(e){}
-  ALL.forEach(function(q){ if(edits[q.id]){ Object.assign(q, edits[q.id]); q.__edited=true; } });
+  function loadState(){
+    state = { per:{}, shuffle:false, subject:'all' };
+    try{ var s=JSON.parse(localStorage.getItem(stateKey(activeId))||"{}"); if(s&&s.per){state=s;} }catch(e){}
+    if(!state.per) state.per={};
+    if(typeof state.shuffle==="undefined") state.shuffle=false;
+    if(typeof state.subject==="undefined") state.subject='all';
+  }
+  loadState();
+  function save(){ localStorage.setItem(stateKey(activeId), JSON.stringify(state)); }
+
+  // ---- global edits (shared across profiles on same device) ----
+  var edits = {}; try{ edits=JSON.parse(localStorage.getItem(EDITS_KEY)||"{}"); }catch(e){}
+  function applyEdits(){ ALL.forEach(function(q){ var e=edits[q.id]; if(e){ Object.assign(q,e); q.__edited=true; } }); }
+  applyEdits();
 
   function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
   function saveEdits(){ localStorage.setItem("cfa_allquiz_edits_v1", JSON.stringify(edits)); }
@@ -491,6 +539,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   document.addEventListener("keydown",function(e){
     if(document.getElementById("view-quiz").hidden) return;
     if(document.getElementById("editModal").style.display==="flex") return;
+    if(document.getElementById("profModal").style.display==="flex") return;
     var grp=groups[gi], q=byId(grp[pi]);
     if(e.key==="a"||e.key==="A"||e.key==="1") sel[q.id]="A";
     else if(e.key==="b"||e.key==="B"||e.key==="2") sel[q.id]="B";
@@ -501,6 +550,59 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     renderQ();
   });
 
+  /* ---- profile UI ---- */
+  function profileStats(id){
+    var st={done:0,right:0,wrong:0};
+    try{ var s=JSON.parse(localStorage.getItem(stateKey(id))||"{}");
+      Object.keys(s.per||{}).forEach(function(k){ var pp=s.per[k]; if(pp&&pp.answered){ st.done++; if(pp.correct) st.right++; else st.wrong++; } });
+    }catch(e){}
+    return st;
+  }
+  function renderProfileChip(){
+    var p=activeProfile();
+    var av=document.getElementById("profAvatar");
+    av.textContent=(p.name||"?").trim().charAt(0).toUpperCase();
+    av.style.background=p.color||'#888';
+    document.getElementById("profName").textContent=p.name;
+  }
+  function openProfileModal(){
+    var box=document.getElementById("profList"); box.innerHTML="";
+    profiles.forEach(function(p){
+      var st=profileStats(p.id); var isActive=p.id===activeId;
+      var row=document.createElement("div"); row.className="profrow"+(isActive?" active":"");
+      row.innerHTML='<span class="avatar lg" style="background:'+p.color+'">'+esc((p.name||"?").charAt(0).toUpperCase())+'</span>'+
+        '<div style="flex:1"><div class="pn">'+esc(p.name)+'</div><div class="ps">已答 '+st.done+' · 对 '+st.right+' · 错 '+st.wrong+(isActive?' · <span class="act">当前账号</span>':'')+'</div></div>'+
+        '<button class="del" data-del="'+p.id+'">删除</button>';
+      row.onclick=function(e){ if(e.target.dataset.del) return; switchProfile(p.id); document.getElementById("profModal").style.display="none"; };
+      box.appendChild(row);
+    });
+    Array.prototype.forEach.call(box.querySelectorAll(".del"),function(b){ b.onclick=function(e){ e.stopPropagation(); deleteProfile(b.dataset.del); }; });
+    document.getElementById("profModal").style.display="flex";
+  }
+  function switchProfile(id){
+    save(); activeId=id; localStorage.setItem(ACTIVE_KEY,id); loadState(); renderProfileChip(); renderHome();
+    toast("已切换到 "+activeProfile().name);
+  }
+  function addProfile(){
+    var name=prompt("新账号名称："); if(!name||!name.trim()) return; name=name.trim();
+    var id='u'+Date.now(); var color=COLORS[profiles.length % COLORS.length];
+    profiles.push({id:id,name:name,color:color}); saveProfiles();
+    switchProfile(id); document.getElementById("profModal").style.display="none"; openProfileModal();
+  }
+  function deleteProfile(id){
+    if(profiles.length<=1){ toast("至少保留一个账号"); return; }
+    var p=profiles.find(function(x){return x.id===id;}); if(!p) return;
+    if(!confirm("删除账号 "+p.name+" 及其全部进度？不可撤销。")) return;
+    localStorage.removeItem(stateKey(id));
+    profiles=profiles.filter(function(x){return x.id!==id;}); saveProfiles();
+    if(activeId===id){ activeId=profiles[0].id; localStorage.setItem(ACTIVE_KEY,activeId); loadState(); renderProfileChip(); renderHome(); }
+    openProfileModal(); toast("已删除 "+p.name);
+  }
+  document.getElementById("profBtn").onclick=openProfileModal;
+  document.getElementById("profClose").onclick=function(){ document.getElementById("profModal").style.display="none"; };
+  document.getElementById("profAdd").onclick=addProfile;
+
+  renderProfileChip();
   renderHome();
 })();
 </script>
