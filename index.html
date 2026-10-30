@@ -102,6 +102,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 .qtbl td.num,.qtbl th.num{text-align:right;white-space:nowrap}
 .rlos{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.55}
 .qimg{margin:8px 0 10px;overflow-x:auto;white-space:normal}.qimg img{max-width:100%;height:auto;display:block}
+.syncdot{font-size:15px;line-height:1;cursor:pointer;opacity:.35;padding:4px;border-radius:8px;user-select:none}
+.syncdot.ok{opacity:1}.syncdot.busy{opacity:.7;animation:pulse 1s infinite}.syncdot.err{opacity:1;filter:hue-rotate(140deg) saturate(3)}
+@keyframes pulse{50%{opacity:.25}}
+.syncbox{margin-top:16px;border-top:1px solid var(--line);padding-top:14px;font-size:13px}
+.syncbox h4{margin:0 0 6px;font-size:14px}
+.syncbox input{width:100%;font:inherit;border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin:8px 0}
+.syncbox ol{margin:6px 0;padding-left:20px;color:var(--muted)}
+.syncbox .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.syncbox .row .btn{flex:1;min-height:auto;padding:9px 12px;font-size:13px}
 .figure{font-size:12.5px;color:#9a7d12;background:#fff8e6;border-radius:8px;padding:6px 10px;margin:6px 0}
 .opts{display:flex;flex-direction:column;gap:9px;margin-top:6px}
 .opt{text-align:left;font:inherit;display:flex;gap:12px;align-items:flex-start;background:var(--card);border:1.6px solid var(--line);border-radius:13px;padding:14px 15px;cursor:pointer;transition:.13s;width:100%;min-height:var(--tap);}
@@ -170,6 +179,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     <div class="logo">CFA 二级 · <b>全科刷题</b></div>
     <div class="spacer"></div>
     <span class="pill" id="topPill">0/0</span>
+    <span class="syncdot" id="syncDot" title="未开启跨设备同步">☁️</span>
     <button class="prof" id="profBtn" title="切换账号"><span class="avatar" id="profAvatar">C</span><span id="profName">Candice</span> <span style="color:var(--muted);font-size:11px">▾</span></button>
   </div>
 
@@ -273,6 +283,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     <p class="small muted">每个人独立记录进度与错题；题目内容修改（编辑）全员共享。</p>
     <div id="profList" style="margin-top:14px"></div>
     <button class="btn ghost" id="profAdd" style="width:100%;margin-top:4px">＋ 新建账号</button>
+    <div class="syncbox" id="syncBox"></div>
     <div style="text-align:right;margin-top:14px"><button class="btn ghost" id="profClose">关闭</button></div>
   </div>
 </div>
@@ -325,7 +336,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   var activeId = localStorage.getItem(ACTIVE_KEY) || profiles[0].id;
   if(!profiles.some(function(p){return p.id===activeId;})) activeId = profiles[0].id;
   localStorage.setItem(ACTIVE_KEY, activeId);
-  function saveProfiles(){ localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); }
+  function saveProfiles(){ localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); syncSoon(); }
   function activeProfile(){ return profiles.find(function(p){return p.id===activeId;}) || profiles[0]; }
   function stateKey(id){ return "cfa_allquiz_state_"+id; }
 
@@ -359,7 +370,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     if(typeof state.subject==="undefined") state.subject='all';
   }
   loadState();
-  function save(){ localStorage.setItem(stateKey(activeId), JSON.stringify(state)); }
+  function save(){ localStorage.setItem(stateKey(activeId), JSON.stringify(state)); syncSoon(); }
 
   // ---- global edits (shared across profiles on same device) ----
   var edits = {}; try{ edits=JSON.parse(localStorage.getItem(EDITS_KEY)||"{}"); }catch(e){}
@@ -622,11 +633,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   document.getElementById("wClear").onclick=function(){
     if(!confirm("清空"+(wrongFilter==='all'?"全部":SUBJ_NAME[wrongFilter])+"错题？"))return;
     var ids = wrongFilter==='all'? statsFor(ALL).wrongIds : ALL.filter(function(q){return q.subjectKey===wrongFilter;}).filter(function(q){var p=state.per[q.id];return p&&p.answered&&!p.correct;}).map(function(q){return q.id;});
-    ids.forEach(function(id){ delete state.per[id]; }); save(); renderWrong(); toast("已清空");
+    var now=Date.now(); ids.forEach(function(id){ state.per[id]={lastAttempt:now}; }); save(); renderWrong(); toast("已清空");
   };
   document.getElementById("btnReset").onclick=function(){ if(!confirm("重置"+(state.subject==='all'?"全部":SUBJ_NAME[state.subject])+"进度？"))return;
     var ids = state.subject==='all'? ALL.map(function(q){return q.id;}) : subjQuestions(state.subject).map(function(q){return q.id;});
-    ids.forEach(function(id){ delete state.per[id]; }); save(); renderHome(); toast("已重置进度"); };
+    var now=Date.now(); ids.forEach(function(id){ state.per[id]={lastAttempt:now}; }); save(); renderHome(); toast("已重置进度"); };
   document.getElementById("btnHome").onclick=function(){ renderHome(); show("view-home"); };
   document.getElementById("btnNext").onclick=nextOrSubmit;
   document.getElementById("btnEdit").onclick=openEdit;
@@ -678,6 +689,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       box.appendChild(row);
     });
     Array.prototype.forEach.call(box.querySelectorAll(".del"),function(b){ b.onclick=function(e){ e.stopPropagation(); deleteProfile(b.dataset.del); }; });
+    renderSyncBox();
     document.getElementById("profModal").style.display="flex";
   }
   function switchProfile(id){
@@ -695,6 +707,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     var p=profiles.find(function(x){return x.id===id;}); if(!p) return;
     if(!confirm("删除账号 "+p.name+" 及其全部进度？不可撤销。")) return;
     localStorage.removeItem(stateKey(id));
+    var del={}; try{ del=JSON.parse(localStorage.getItem(DELPROF_KEY)||"{}"); }catch(e){}
+    del[id]=Date.now(); localStorage.setItem(DELPROF_KEY, JSON.stringify(del));
     profiles=profiles.filter(function(x){return x.id!==id;}); saveProfiles();
     if(activeId===id){ activeId=profiles[0].id; localStorage.setItem(ACTIVE_KEY,activeId); loadState(); renderProfileChip(); renderHome(); }
     openProfileModal(); toast("已删除 "+p.name);
@@ -703,8 +717,127 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   document.getElementById("profClose").onclick=function(){ document.getElementById("profModal").style.display="none"; };
   document.getElementById("profAdd").onclick=addProfile;
 
+
+  /* ---- cross-device sync: progress lives in a secret gist in the user's GitHub account ---- */
+  var SYNC_KEY="cfa_allquiz_sync", DELPROF_KEY="cfa_allquiz_delprof", GIST_FILE="cfa-quiz-progress.json";
+  var GIST_DESC="CFA quiz progress sync (candice987.github.io/quant-quiz)";
+  var sync={}; try{ sync=JSON.parse(localStorage.getItem(SYNC_KEY)||"{}")||{}; }catch(e){}
+  var syncTimer=null, syncBusy=false, syncAgain=false, syncErr="";
+  function saveSync(){ localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }
+  function syncSoon(){ if(!sync||!sync.token) return; clearTimeout(syncTimer); syncTimer=setTimeout(doSync,1500); }
+  function gh(path,opt){
+    opt=opt||{}; opt.cache="no-store";
+    opt.headers=Object.assign({"Authorization":"Bearer "+sync.token,"Accept":"application/vnd.github+json"},opt.headers||{});
+    return fetch("https://api.github.com"+path,opt).then(function(r){
+      if(!r.ok){ var e=new Error("GitHub "+r.status); e.status=r.status; throw e; }
+      return r.json();
+    });
+  }
+  function readJSON(k,d){ try{ return JSON.parse(localStorage.getItem(k)||"null")||d; }catch(e){ return d; } }
+  function localSnapshot(){
+    localStorage.setItem(stateKey(activeId), JSON.stringify(state));
+    var per={}; profiles.forEach(function(p){ per[p.id]=(readJSON(stateKey(p.id),{}).per)||{}; });
+    return {v:1, profiles:profiles, deletedProfiles:readJSON(DELPROF_KEY,{}), per:per};
+  }
+  // union of both sides; for each question keep the record with the later lastAttempt
+  function mergeData(L,R){
+    R=R||{};
+    var del=Object.assign({},R.deletedProfiles||{});
+    Object.keys(L.deletedProfiles||{}).forEach(function(k){ del[k]=Math.max(del[k]||0,L.deletedProfiles[k]); });
+    var profs=[], seen={};
+    (L.profiles||[]).concat(R.profiles||[]).forEach(function(p){ if(!p||!p.id||seen[p.id]||del[p.id]) return; seen[p.id]=1; profs.push(p); });
+    if(!profs.length) profs=(L.profiles||[]).slice();
+    var per={};
+    profs.forEach(function(p){
+      var a=(L.per||{})[p.id]||{}, b=(R.per||{})[p.id]||{}, m={};
+      Object.keys(a).forEach(function(k){ m[k]=a[k]; });
+      Object.keys(b).forEach(function(k){ var x=m[k], y=b[k]; m[k]=(!x||((y&&y.lastAttempt)||0)>((x&&x.lastAttempt)||0))?y:x; });
+      per[p.id]=m;
+    });
+    return {v:1, profiles:profs, deletedProfiles:del, per:per};
+  }
+  function applyMerged(M){
+    profiles=M.profiles; localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+    localStorage.setItem(DELPROF_KEY, JSON.stringify(M.deletedProfiles||{}));
+    profiles.forEach(function(p){ var s=readJSON(stateKey(p.id),{}); s.per=M.per[p.id]||{}; localStorage.setItem(stateKey(p.id), JSON.stringify(s)); });
+    if(!profiles.some(function(p){return p.id===activeId;})){ activeId=profiles[0].id; localStorage.setItem(ACTIVE_KEY,activeId); }
+    loadState(); renderProfileChip(); renderHome();
+    if(!document.getElementById("view-wrong").hidden) renderWrong();
+  }
+  function ensureGist(){
+    if(sync.gistId) return Promise.resolve(sync.gistId);
+    return gh("/gists?per_page=100").then(function(list){
+      var g=(list||[]).find(function(x){ return x.files&&x.files[GIST_FILE]; });
+      if(g) return g.id;
+      var files={}; files[GIST_FILE]={content:JSON.stringify(localSnapshot())};
+      return gh("/gists",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({description:GIST_DESC,public:false,files:files})}).then(function(n){ return n.id; });
+    }).then(function(id){ sync.gistId=id; saveSync(); return id; });
+  }
+  function readGist(g){
+    var f=g.files&&g.files[GIST_FILE]; if(!f) return Promise.resolve(null);
+    if(f.truncated) return fetch(f.raw_url,{cache:"no-store"}).then(function(r){ return r.json(); });
+    try{ return Promise.resolve(JSON.parse(f.content||"null")); }catch(e){ return Promise.resolve(null); }
+  }
+  function doSync(){
+    if(!sync.token) return Promise.resolve(false);
+    if(syncBusy){ syncAgain=true; return Promise.resolve(false); }
+    syncBusy=true; syncErr=""; setSyncDot();
+    return ensureGist().then(function(id){ return gh("/gists/"+id); }).then(readGist).then(function(R){
+      var M=mergeData(localSnapshot(),R); applyMerged(M);
+      if(JSON.stringify(M)===JSON.stringify(R)) return;
+      var files={}; files[GIST_FILE]={content:JSON.stringify(M)};
+      return gh("/gists/"+sync.gistId,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({files:files})});
+    }).then(function(){ sync.last=Date.now(); saveSync(); return true; })
+    .catch(function(e){
+      syncErr = e.status===401?"令牌无效或已过期":e.status===404?"找不到同步用的 Gist（令牌需勾选 gist 权限）":(e.message||"网络错误");
+      if(e.status===404){ delete sync.gistId; saveSync(); }
+      return false;
+    }).then(function(ok){
+      syncBusy=false; setSyncDot(); renderSyncBox();
+      if(syncAgain){ syncAgain=false; syncSoon(); }
+      return ok;
+    });
+  }
+  function hhmm(t){ var d=new Date(t); return (d.getMonth()+1)+"/"+d.getDate()+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+  function setSyncDot(){
+    var d=document.getElementById("syncDot");
+    d.className="syncdot"+(!sync.token?"":syncBusy?" busy":syncErr?" err":" ok");
+    d.title=!sync.token?"未开启跨设备同步":syncBusy?"同步中…":syncErr?("同步失败："+syncErr):("已同步 "+(sync.last?hhmm(sync.last):""));
+  }
+  function renderSyncBox(){
+    var b=document.getElementById("syncBox"); if(!b) return;
+    if(!sync.token){
+      b.innerHTML='<h4>☁️ 跨设备同步（手机 ⇄ 电脑）</h4>'+
+        '<div class="muted">进度保存在你 GitHub 账号里的一个私密 Gist。每台设备只需设置一次：</div>'+
+        '<ol><li>打开 <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=CFA%20quiz%20sync" target="_blank" rel="noopener">GitHub 新建令牌</a>，只勾选 <b>gist</b>，有效期可选 No expiration，生成后复制</li>'+
+        '<li>粘贴到下面并点“开启同步”；另一台设备粘贴同一个令牌即可</li></ol>'+
+        '<input id="syncToken" type="password" autocomplete="off" placeholder="ghp_… 令牌">'+
+        '<div class="row"><button class="btn primary" id="syncOn">开启同步</button></div>';
+      document.getElementById("syncOn").onclick=function(){
+        var t=document.getElementById("syncToken").value.trim(); if(!t){ toast("请先粘贴令牌"); return; }
+        sync={token:t}; saveSync(); toast("正在连接…");
+        doSync().then(function(ok){
+          if(!ok&&!sync.gistId){ var why=syncErr; sync={}; saveSync(); setSyncDot(); toast("连接失败："+why); }
+          else toast("已开启同步 ✓");
+          openProfileModal();
+        });
+      };
+    } else {
+      b.innerHTML='<h4>☁️ 跨设备同步：已开启</h4>'+
+        '<div class="muted">'+(syncBusy?"同步中…":syncErr?('<span style="color:var(--bad)">同步失败：'+esc(syncErr)+'</span>'):("上次同步 "+(sync.last?hhmm(sync.last):"—")))+'</div>'+
+        '<div class="row"><button class="btn primary" id="syncNow">立即同步</button><button class="btn ghost danger" id="syncOff">关闭同步</button></div>';
+      document.getElementById("syncNow").onclick=function(){ doSync().then(function(ok){ toast(ok?"已同步 ✓":"同步失败："+syncErr); openProfileModal(); }); };
+      document.getElementById("syncOff").onclick=function(){ if(!confirm("在这台设备上关闭同步？（已同步的进度仍保留在本机和 Gist 里）")) return; sync={}; saveSync(); setSyncDot(); renderSyncBox(); };
+    }
+  }
+  document.getElementById("syncDot").onclick=openProfileModal;
+  document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") doSync(); });
+  window.addEventListener("online",function(){ doSync(); });
+
   renderProfileChip();
   renderHome();
+  setSyncDot();
+  doSync();
 })();
 </script>
 </body>
