@@ -149,6 +149,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 .li .badge{font-size:10.5px;font-weight:800;padding:3px 7px;border-radius:6px}
 .li .badge.wrong{background:var(--bad-soft);color:var(--bad)}
 .li .badge.right{background:var(--ok-soft);color:var(--ok)}
+.li .badge.marks{background:var(--bad-soft);color:var(--bad);letter-spacing:1px}
+.li .badge.fixed{background:var(--ok-soft);color:var(--ok);margin-left:4px}
+.rsrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1.5px solid var(--line);border-radius:11px;margin-bottom:7px;cursor:pointer;user-select:none}
+.rsrow input{width:18px;height:18px;flex:0 0 auto}
+.rsrow .rn{flex:1;font-weight:750;font-size:14px}
+.rsrow .rm{font-size:11.5px;color:var(--muted)}
+.rsrow.on{border-color:var(--bad);background:var(--bad-soft)}
 .li .badge.review{background:#fff4d6;color:#9a7d12}
 
 .toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:#fff;cursor:pointer;user-select:none}
@@ -266,6 +273,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
         <button class="btn ghost" id="wHome" style="padding:9px 14px;font-size:13px;min-height:auto">返回</button>
       </div>
       <div class="chips" id="wrongChips" style="margin-top:6px"></div>
+      <div class="chips" id="wrongTimesChips" style="margin-top:6px"></div>
       <div id="wrongList" style="margin-top:8px"></div>
       <div class="qfoot" id="wFoot" hidden>
         <button class="btn ghost danger" id="wClear">清空当前错题</button>
@@ -285,6 +293,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     <button class="btn ghost" id="profAdd" style="width:100%;margin-top:4px">＋ 新建账号</button>
     <div class="syncbox" id="syncBox"></div>
     <div style="text-align:right;margin-top:14px"><button class="btn ghost" id="profClose">关闭</button></div>
+  </div>
+</div>
+
+<div id="resetModal" style="position:fixed;inset:0;background:rgba(20,24,35,.55);display:none;align-items:center;justify-content:center;z-index:60;padding:16px">
+  <div style="background:#fff;border-radius:16px;max-width:460px;width:100%;max-height:88vh;overflow:auto;padding:22px">
+    <h3 style="margin:0 0 4px">重置做题记录</h3>
+    <p class="small muted">勾选要重置的科目。重置后这些题变回“未做”，可以重新刷一遍。</p>
+    <div style="display:flex;gap:8px;margin:12px 0 8px">
+      <button class="btn ghost" id="rsAll" style="flex:1;min-height:auto;padding:8px">全选</button>
+      <button class="btn ghost" id="rsNone" style="flex:1;min-height:auto;padding:8px">全不选</button>
+    </div>
+    <div id="rsList"></div>
+    <label class="rsrow" style="margin-top:12px;border-style:dashed"><input type="checkbox" id="rsWipe"><div><div class="rn" style="font-size:13px">同时清除错题记录</div><div class="rm">不勾选：错题本和 ✗ 次数保留，重做再错会记为第 2 次</div></div></label>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+      <button class="btn ghost" id="rsCancel">取消</button>
+      <button class="btn primary" id="rsGo" style="background:var(--bad);border-color:var(--bad)">重置所选</button>
+    </div>
   </div>
 </div>
 
@@ -443,9 +468,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   }
   function curQ(){ return subjQuestions(state.subject); }
 
+  // how many times a question has been answered wrong (records before this feature count as 1 if currently wrong)
+  function wrongTimes(p){ if(!p) return 0; if(typeof p.wrongs==="number") return p.wrongs; return (p.answered&&!p.correct)?1:0; }
+  function marks(n){ return n<=0?'':(n<=5?new Array(n+1).join('✗'):'✗×'+n); }
   function statsFor(qs){
     var done=0,right=0,wrongIds=[];
-    qs.forEach(function(q){ var p=state.per[q.id]; if(p&&p.answered){ done++; if(p.correct) right++; else wrongIds.push(q.id); } });
+    qs.forEach(function(q){ var p=state.per[q.id]; if(p&&p.answered){ done++; if(p.correct) right++; } if(wrongTimes(p)>0) wrongIds.push(q.id); });
     return {total:qs.length,done:done,right:right,wrongIds:wrongIds};
   }
 
@@ -489,7 +517,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     qs.slice(0,200).forEach(function(q){
       var p=state.per[q.id]||{};
       var badge='';
-      if(p.answered){ badge = p.correct?'<span class="badge right">✓</span>':'<span class="badge wrong">错</span>'; }
+      if(p.answered){ badge = p.correct?'<span class="badge right">✓</span>':'<span class="badge marks">'+marks(wrongTimes(p))+'</span>'; }
+      else if(wrongTimes(p)>0){ badge='<span class="badge marks" style="opacity:.6">'+marks(wrongTimes(p))+'</span>'; }
       else if(!(q.options.A&&q.options.B&&q.options.C)){ badge='<span class="badge review">需校对</span>'; }
       var d=document.createElement("div"); d.className="li";
       var pv=plain(q.stem);
@@ -553,7 +582,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   function submitGroup(){
     var grp=groups[gi];
     grp.forEach(function(id){ var q=byId(id); var p=state.per[id]||{};
+      var prev=wrongTimes(p);
       p.answered=true; p.userAnswer=sel[id]; p.correct=(sel[id]===q.answer); p.lastAttempt=Date.now();
+      p.wrongs=prev+(p.correct?0:1);
       state.per[id]=p; });
     save(); renderResults(grp);
   }
@@ -572,7 +603,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
         return '<button class="'+cls+'"><div class="letter">'+L+'</div><div class="txt">'+rich(q.options[L]||"(空)")+'</div></button>';
       }).join("");
       var metaCls=p.correct?"meta ok":"meta no";
-      var metaTxt=p.correct?("第 "+(idx+1)+" 题 · ✓ 答对"):("第 "+(idx+1)+" 题 · ✗ 答错（你选 "+(p.userAnswer||"—")+"，正确 "+q.answer+"）");
+      var metaTxt=p.correct?("第 "+(idx+1)+" 题 · ✓ 答对"):("第 "+(idx+1)+" 题 · "+marks(p.wrongs)+" 答错"+(p.wrongs>1?"（第 "+p.wrongs+" 次错）":"")+"（你选 "+(p.userAnswer||"—")+"，正确 "+q.answer+"）");
       d.innerHTML='<div class="'+metaCls+'">'+metaTxt+'</div><div class="rstem">'+stemHtml(q)+'</div><div class="opts">'+optsHtml+'</div><div class="rexpl">'+rich(q.explanation||"（暂无解析）")+losHtml(q)+'</div>';
       list.appendChild(d);
     });
@@ -583,9 +614,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 
   /* WRONG BOOK */
   var wrongFilter='all';
+  var wrongTimesFilter=0;
+  function wrongShown(){
+    var allWrong=[]; ALL.forEach(function(q){ if(wrongTimes(state.per[q.id])>0) allWrong.push(q); });
+    var bySubj = wrongFilter==='all'? allWrong : allWrong.filter(function(q){return q.subjectKey===wrongFilter;});
+    var shown = bySubj.filter(function(q){ var n=wrongTimes(state.per[q.id]); return wrongTimesFilter===0 || (wrongTimesFilter===1?n===1:n>=2); });
+    return {all:allWrong, bySubj:bySubj, shown:shown};
+  }
   function renderWrong(){
-    var allWrong=[]; ALL.forEach(function(q){ var p=state.per[q.id]; if(p&&p.answered&&!p.correct) allWrong.push(q); });
-    var shown = wrongFilter==='all'? allWrong : allWrong.filter(function(q){return q.subjectKey===wrongFilter;});
+    var W=wrongShown(), allWrong=W.all, shown=W.shown;
     document.getElementById("wrongCount").textContent= allWrong.length?("共 "+allWrong.length+" 题，显示 "+shown.length):"暂无错题";
     document.getElementById("wFoot").hidden = allWrong.length===0;
     var wc=document.getElementById("wrongChips"); wc.innerHTML="";
@@ -594,12 +631,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       var n=allWrong.filter(function(q){return q.subjectKey===key;}).length; if(!n) return;
       var c=document.createElement("button"); c.className="chip"+(wrongFilter===key?" sel":""); c.textContent=SUBJ_NAME[key].split(" ")[0]+"("+n+")"; c.onclick=function(){wrongFilter=key;renderWrong();}; wc.appendChild(c);
     });
+    var tc=document.getElementById("wrongTimesChips"); tc.innerHTML="";
+    [[0,"全部次数"],[1,"✗ 错 1 次"],[2,"✗✗ 错 2 次及以上"]].forEach(function(o){
+      var n=W.bySubj.filter(function(q){ var k=wrongTimes(state.per[q.id]); return o[0]===0||(o[0]===1?k===1:k>=2); }).length;
+      var c=document.createElement("button"); c.className="chip"+(wrongTimesFilter===o[0]?" sel":""); c.textContent=o[1]+"("+n+")";
+      c.onclick=function(){ wrongTimesFilter=o[0]; renderWrong(); }; tc.appendChild(c);
+    });
     var box=document.getElementById("wrongList");
     if(!shown.length){ box.innerHTML='<div class="empty"><div class="big">🌱</div>该分类下无错题</div>'; return; }
     box.innerHTML='<div class="list"></div>'; var list=box.querySelector(".list");
     shown.forEach(function(q){
       var d=document.createElement("div"); d.className="li";
-      d.innerHTML='<div class="ix">'+q.id.replace(/_/,'.')+'</div><div class="t"><span style="font-size:11px;color:var(--muted)">'+esc(q.subject.split(" ")[0])+'</span> '+esc(plain(q.stem).slice(0,60))+'…</div><span class="badge wrong">错</span>';
+      d.innerHTML='<div class="ix">'+q.id.replace(/_/,'.')+'</div><div class="t"><span style="font-size:11px;color:var(--muted)">'+esc(q.subject.split(" ")[0])+'</span> '+esc(plain(q.stem).slice(0,60))+'…</div>'+(function(){ var p=state.per[q.id]||{};
+        return '<span class="badge marks" title="做错 '+wrongTimes(p)+' 次">'+marks(wrongTimes(p))+'</span>'+(p.answered&&p.correct?'<span class="badge fixed">已订正</span>':''); })();
       list.appendChild(d);
     });
   }
@@ -627,17 +671,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   /* events */
   document.getElementById("btnCross").onclick=startCross;
   document.getElementById("btnWrong").onclick=function(){ var ids=statsFor(ALL).wrongIds; if(ids.length) startQuiz(ids); };
-  document.getElementById("btnReviewWrong").onclick=function(){ wrongFilter='all'; renderWrong(); show("view-wrong"); };
+  document.getElementById("btnReviewWrong").onclick=function(){ wrongFilter='all'; wrongTimesFilter=0; renderWrong(); show("view-wrong"); };
   document.getElementById("wHome").onclick=function(){ renderHome(); show("view-home"); };
-  document.getElementById("wPractice").onclick=function(){ var ids=statsFor(curQ()).wrongIds; if(ids.length) startQuiz(ids); };
+  document.getElementById("wPractice").onclick=function(){ var ids=wrongShown().shown.map(function(q){return q.id;}); if(ids.length) startQuiz(ids); };
   document.getElementById("wClear").onclick=function(){
-    if(!confirm("清空"+(wrongFilter==='all'?"全部":SUBJ_NAME[wrongFilter])+"错题？"))return;
-    var ids = wrongFilter==='all'? statsFor(ALL).wrongIds : ALL.filter(function(q){return q.subjectKey===wrongFilter;}).filter(function(q){var p=state.per[q.id];return p&&p.answered&&!p.correct;}).map(function(q){return q.id;});
+    var ids=wrongShown().shown.map(function(q){return q.id;}); if(!ids.length) return;
+    if(!confirm("把当前显示的 "+ids.length+" 道题移出错题本？（✗ 次数清零，题目变回未做）"))return;
     var now=Date.now(); ids.forEach(function(id){ state.per[id]={lastAttempt:now}; }); save(); renderWrong(); toast("已清空");
   };
-  document.getElementById("btnReset").onclick=function(){ if(!confirm("重置"+(state.subject==='all'?"全部":SUBJ_NAME[state.subject])+"进度？"))return;
-    var ids = state.subject==='all'? ALL.map(function(q){return q.id;}) : subjQuestions(state.subject).map(function(q){return q.id;});
-    var now=Date.now(); ids.forEach(function(id){ state.per[id]={lastAttempt:now}; }); save(); renderHome(); toast("已重置进度"); };
+  var rsPick={};
+  function renderResetList(){
+    var box=document.getElementById("rsList"); box.innerHTML="";
+    SUBJ_ORDER.forEach(function(key){
+      var st=statsFor(subjQuestions(key));
+      var row=document.createElement("label"); row.className="rsrow"+(rsPick[key]?" on":"");
+      row.innerHTML='<input type="checkbox"'+(rsPick[key]?' checked':'')+'><div class="rn">'+esc(SUBJ_NAME[key])+'</div><div class="rm">已答 '+st.done+'/'+st.total+' · 错题 '+st.wrongIds.length+'</div>';
+      row.querySelector("input").onchange=function(e){ rsPick[key]=e.target.checked; renderResetList(); };
+      box.appendChild(row);
+    });
+  }
+  document.getElementById("btnReset").onclick=function(){ rsPick={}; document.getElementById("rsWipe").checked=false; renderResetList(); document.getElementById("resetModal").style.display="flex"; };
+  document.getElementById("rsAll").onclick=function(){ SUBJ_ORDER.forEach(function(k){ rsPick[k]=true; }); renderResetList(); };
+  document.getElementById("rsNone").onclick=function(){ rsPick={}; renderResetList(); };
+  document.getElementById("rsCancel").onclick=function(){ document.getElementById("resetModal").style.display="none"; };
+  document.getElementById("rsGo").onclick=function(){
+    var keys=SUBJ_ORDER.filter(function(k){ return rsPick[k]; }); if(!keys.length){ toast("请先勾选科目"); return; }
+    var wipe=document.getElementById("rsWipe").checked;
+    if(!confirm("重置 "+keys.map(function(k){return SUBJ_NAME[k].split(" ")[0];}).join("、")+" 的做题记录"+(wipe?"，并清除错题记录":"（保留错题本）")+"？"))return;
+    var now=Date.now();
+    keys.forEach(function(k){ subjQuestions(k).forEach(function(q){
+      var n=wrongTimes(state.per[q.id]);
+      state.per[q.id] = (!wipe&&n>0) ? {lastAttempt:now, wrongs:n} : {lastAttempt:now};
+    }); });
+    save(); renderHome(); document.getElementById("resetModal").style.display="none"; toast("已重置 "+keys.length+" 个科目");
+  };
   document.getElementById("btnHome").onclick=function(){ renderHome(); show("view-home"); };
   document.getElementById("btnNext").onclick=nextOrSubmit;
   document.getElementById("btnEdit").onclick=openEdit;
@@ -652,6 +719,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     if(document.getElementById("view-quiz").hidden) return;
     if(document.getElementById("editModal").style.display==="flex") return;
     if(document.getElementById("profModal").style.display==="flex") return;
+    if(document.getElementById("resetModal").style.display==="flex") return;
     var grp=groups[gi], q=byId(grp[pi]);
     if(e.key==="a"||e.key==="A"||e.key==="1") sel[q.id]="A";
     else if(e.key==="b"||e.key==="B"||e.key==="2") sel[q.id]="B";
