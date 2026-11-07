@@ -565,7 +565,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       ids = complete.concat(incomplete);
       if(!ids.length) ids=qs.map(function(q){return q.id;});
     }
-    var shuf = forceShuffle || state.shuffle;
+    // 全部题型 mode: when the set has both concept and calc questions, mix them randomly
+    // instead of serving them in book order (which tends to bunch one type together)
+    var mixed = (state.qtype||"all")==="all" && ids.some(function(id){var q=byId(id);return q&&q.qtype==="calc";}) && ids.some(function(id){var q=byId(id);return q&&q.qtype==="concept";});
+    var shuf = forceShuffle || state.shuffle || mixed;
     queue = shuf ? shuffle(ids.slice()) : ids.slice();
     groups = chunk(queue,GROUP); gi=0;
     show("view-quiz"); loadGroup();
