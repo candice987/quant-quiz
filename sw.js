@@ -1,8 +1,8 @@
 // Offline support: keep the page and its images in a cache.
-// The page itself is network-first (so updates show up when online), everything else cache-first.
-var CACHE = 'cfa-quiz-v1';
+// The page and eoc.js are network-first (so updates show up when online), everything else cache-first.
+var CACHE = 'cfa-quiz-v2';
 var FILES = [
-  './', 'index.html', 'manifest.webmanifest',
+  './', 'index.html', 'eoc.js', 'manifest.webmanifest',
   'img/icon-192.png', 'img/icon-512.png',
   'img/fi_41.png', 'img/fi_45.png', 'img/deriv_6.png', 'img/deriv_10.png', 'img/deriv_11.png'
 ];
@@ -27,6 +27,15 @@ function fromNetwork(req, timeoutMs) {
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return; // GitHub API sync etc. go straight to the network
+  // the page and the EOC data change with each update: network first, cache as the offline fallback
+  var isData = /\/eoc\.js$/.test(new URL(req.url).pathname);
+  if (isData) {
+    e.respondWith(fromNetwork(req, 4000).then(function (res) {
+      var copy = res.clone(); caches.open(CACHE).then(function (c) { c.put('eoc.js', copy); });
+      return res;
+    }).catch(function () { return caches.match('eoc.js'); }));
+    return;
+  }
   if (req.mode === 'navigate') {
     e.respondWith(
       fromNetwork(req, 4000).then(function (res) {
