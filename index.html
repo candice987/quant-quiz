@@ -249,6 +249,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
         <button class="btn" id="btnWrong">✎ 只练错题</button>
       </div>
       <div class="actions" style="margin-top:9px">
+        <button class="btn" id="btnWrong2" style="width:100%">✗✗ 刷错两次的题 · 科目和顺序随机</button>
+      </div>
+      <div class="actions" style="margin-top:9px">
         <button class="btn ghost" id="btnReviewWrong" style="background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.3)">📓 错题本</button>
         <label class="toggle" id="shuffleToggle"><span class="sw"></span><span>本组内随机</span></label>
       </div>
@@ -582,6 +585,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     document.getElementById("homeBar").style.width=(allSt.total?allSt.done/allSt.total*100:0)+"%";
     document.getElementById("shuffleToggle").classList.toggle("on",!!state.shuffle);
     document.getElementById("btnWrong").disabled = allSt.wrongIds.length===0;
+    var w2=wrongTwiceIds(); var b2=document.getElementById("btnWrong2");
+    b2.disabled = w2.length===0; b2.textContent = "✗✗ 刷错两次的题（"+w2.length+"）· 科目和顺序随机";
     // subject grid (tap any card to start that subject)
     renderTypeChips();
     var grid=document.getElementById("subjGrid"); grid.innerHTML="";
@@ -845,6 +850,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
 
   /* events */
   document.getElementById("btnCross").onclick=startCross;
+  // questions answered wrong at least twice, from every subject
+  function wrongTwiceIds(){ return ALL.filter(function(q){ return wrongTimes(state.per[q.id])>=2; }).map(function(q){ return q.id; }); }
+  document.getElementById("btnWrong2").onclick=function(){ var ids=wrongTwiceIds(); if(ids.length) startQuiz(ids, true); else toast("还没有错两次的题"); };
   document.getElementById("btnWrong").onclick=function(){ var ids=statsFor(ALL).wrongIds; if(ids.length) startQuiz(ids); };
   document.getElementById("btnEoc").onclick=function(){ if(EOC.subjects.length===1) eocSubj=EOC.subjects[0].key; renderEoc(); show("view-eoc"); };
   document.getElementById("eocHome").onclick=function(){ renderHome(); show("view-home"); };
